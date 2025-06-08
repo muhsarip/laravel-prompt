@@ -1,131 +1,175 @@
-# A Feature
+You are a Laravel API development expert.
 
-## Flow
-Frontend => API => Request Class / Policy => Controller => Library => Response
+Based on the specifications below, help me enforce consistent architectural patterns for Laravel feature modules, ensuring clarity, maintainability, and best practices.
 
-## Details
+# Objective
+Design a standardized structure for implementing API-based Laravel features with clean separation of concerns: frontend interaction, validation, authorization, business logic, and response handling.
 
-### File naming and directory
-- Feature (example : Blog)  
-    Models: Blog/Blog  
-    Controller: Blog/BlogController  
-    Resource : Blog/BlogResource  
-    Policy : Blog/BlogPolicy  
-    Request : Blog/StoreBlogRequest  
-    Service : Blog/CopyBlog  
+---
 
-- Sub Feature (example : Comment in blog)  
-    Models: Blog/Blog  
-    Controller: Blog/CommentController  
-    Resource : Blog/CommentResource  
-    Policy : Blog/CommentPolicy  
-    Request : Comment/StoreCommentRequest  
-    Service : Blog/ReviewComment  
+## 📦 Feature Flow
 
-### Route Layer
-- always using resource:  
-  `Route::apiResource('blogs', BlogController::class)->only(['index', 'update', 'store', 'destroy']);`
+Frontend ➡️ API ➡️ Request Class / Policy ➡️ Controller ➡️ Service ➡️ Resource Response
 
-- every another route in feature outside the resource, need to call first, example:
-    ```
-    Route::get('blogs/download', [BlogController::class, 'download'])->name('blogs.download');
-    Route::apiResource('blogs', BlogController::class)->only(['index', 'update', 'store', 'destroy']);    
-    ```
+---
 
-### Validation Layer
-- always using separate validation class:  
-  `app/Http/Requests/Blog/IndexBlogRequest.php`  
-  `IndexBlogRequest` for index method  
-  `StoreBlogRequest` for store method  
-  `UpdateBlogRequest` for update method  
-  `DeleteBlogRequest` for destroy method`  
+## 📁 File Naming & Directory Convention
 
-- MUST implement policy based on model  
-- register policy class in app/Providers/AppServiceProvider.php  
-- don't forget to implement policy in validation class, example:
-    ```
-    class DeleteBlogRequest extends FormRequest
-    {
-        public function authorize()
-        {
-            return $this->user()->can('delete', $this->route('blog'));
-        }
-    ```
+- **Feature** (e.g. Blog)
+  - Model: `Blog/Blog`
+  - Controller: `Blog/BlogController`
+  - Resource: `Blog/BlogResource`
+  - Policy: `Blog/BlogPolicy`
+  - Request: `Blog/StoreBlogRequest`
+  - Service: `Blog/CopyBlog`
 
-### Business Logic
-- business logic available in controller  
-- always create controller with --resource  
-- always using dependency injection for model, example:  
-  `public function update(UpdateBlogRequest $request, Blog $blog)`  
-  so there is no need to check if the model exists or not, it automatically returns 404 if the model doesn't exist  
+- **Sub-feature** (e.g. Comment inside Blog)
+  - Controller: `Blog/CommentController`
+  - Resource: `Blog/CommentResource`
+  - Policy: `Blog/CommentPolicy`
+  - Request: `Comment/StoreCommentRequest`
+  - Service: `Blog/ReviewComment`
 
-- if business logic is straightforward like `$blog->update([...])`, just put it in the controller method  
-- if the logic is more complex, move it into separate services class
+---
 
-### Service Class
-- use action name like "StoreBlog" "UpdateBlog","CopyBloc", naming:  
-  `app/Services/Blog/StoreBlog.php` 
+## 🧭 Route Layer
 
-- the format must be:  
-  `class StoreBlog { public function run($inputs, User $user) { ... } }`  
-  Yes, must use `run` method, single responsibility
+- Use `apiResource`:
+  ```php
+  Route::apiResource('blogs', BlogController::class)->only(['index', 'update', 'store', 'destroy']);
+  ```
 
-- the usage in controller must (less code):
-    ```
-    public function store(StoreBlogRequest $request, StoreBlog $action)
-    {
-        $action->run(blabla)
-    }
-    ```
+- Define custom routes **before** the resource route:
+  ```php
+  Route::get('blogs/download', [BlogController::class, 'download'])->name('blogs.download');
+  Route::apiResource('blogs', BlogController::class)->only(['index', 'update', 'store', 'destroy']);
+  ```
 
-### Response
-- every model returned from controller must have resource file, the dir respects to dir of the model, resource file need to create with parent, example Blog => Blog/BlogResource, also the model  
+---
 
-- every collection must use spatie query builder for filter and sort:  
-    ```php
-    $tasks = QueryBuilder::for(Task::withCommonRelations())
-        ->with(['section', 'recurringTask', 'pendingApprovals.assigneeTeamUser.user'])
-        ->allowedFilters([
-            'name',
-            AllowedFilter::exact('section_id'),
-            AllowedFilter::scope('due_this_week'),
-        ])
-        ->where('project_id', $request->project_id)
-        ->withCount('attachments')
-        ->withCount('comments')
-        ->defaultSort('order')
-        ->paginate($request->item_per_page);
+## ✅ Validation Layer
 
-    return TaskResource::collection($tasks);
-    ```
+- Use distinct Request classes:
+  - `IndexBlogRequest`
+  - `StoreBlogRequest`
+  - `UpdateBlogRequest`
+  - `DeleteBlogRequest`
 
-- every response method needs to return object model for update, store, show  
-- except destroy, it returns `response()->noContent()`
+- Directory: `app/Http/Requests/Blog/...`
 
-### Reporting
-- this report feature, just created when it asked  
-- the controller name is "download"  
-    ```
-    public function download(DownloadReportBlogRequest $request)
-    {
-        $today = date("Y-m-d");
+- Authorization MUST use policy logic:
+  ```php
+  public function authorize()
+  {
+      return $this->user()->can('delete', $this->route('blog'));
+  }
+  ```
 
-        return (new BlogExport($request))->download("blog-report-{$today}.xlsx");
-    }
-    ```
+- Register policies in `AppServiceProvider`.
 
-- the format must be same : .code/rules/report-format.md
+---
 
-### Migration
-- when working foreign id, do not using ->foreignId() instead using only bigInteger()
+## 🧠 Business Logic Layer
 
-### Testing
-- every endpoint API needs unit testing  
-- when import the model in factory class, please be aware about the model directory
+- Keep simple logic in controller:
+  ```php
+  $blog->update([...]);
+  ```
 
-### Model
-- Every model must contain fillable  
-- Every model should define relation clearly
+- Move complex logic into Service classes.
 
-## Warning
-When you import any model class in any file, please find out the correct directory, do not make any assumption
+- Use dependency injection for models to auto-404 if not found:
+  ```php
+  public function update(UpdateBlogRequest $request, Blog $blog)
+  ```
+
+---
+
+## ⚙️ Service Class Structure
+
+- Naming: `app/Services/Blog/StoreBlog.php`
+- Convention:
+  ```php
+  class StoreBlog {
+      public function run($inputs, User $user) {
+          ...
+      }
+  }
+  ```
+
+- Usage in controller:
+  ```php
+  public function store(StoreBlogRequest $request, StoreBlog $action)
+  {
+      return $action->run([...], $request->user());
+  }
+  ```
+
+---
+
+## 📤 Response Layer
+
+- Use Resource class for all model responses.
+- Resource path must reflect model path: e.g. `Blog/BlogResource`.
+- Use Spatie Query Builder for collections:
+  ```php
+  $tasks = QueryBuilder::for(Task::withCommonRelations())
+      ->with(['section', 'recurringTask', 'pendingApprovals.assigneeTeamUser.user'])
+      ->allowedFilters([
+          'name',
+          AllowedFilter::exact('section_id'),
+          AllowedFilter::scope('due_this_week'),
+      ])
+      ->where('project_id', $request->project_id)
+      ->withCount(['attachments', 'comments'])
+      ->defaultSort('order')
+      ->paginate($request->item_per_page);
+
+  return TaskResource::collection($tasks);
+  ```
+
+- `store`, `update`, and `show` → must return Resource  
+- `destroy` → must return `response()->noContent()`
+
+---
+
+## 📈 Reporting Layer
+
+- Only create report endpoint if requested.
+- Use controller method: `download`
+  ```php
+  public function download(DownloadReportBlogRequest $request)
+  {
+      $today = date("Y-m-d");
+      return (new BlogExport($request))->download("blog-report-{$today}.xlsx");
+  }
+  ```
+
+- Follow format spec: `.code/rules/report-format.md`
+
+---
+
+## 🛠️ Migration Layer
+
+- Avoid `->foreignId()`. Use `bigInteger()` for foreign keys.
+
+---
+
+## 🧪 Testing Layer
+
+- Write unit tests for every endpoint.
+- Always verify model paths in factory imports.
+
+---
+
+## 🧱 Model Layer
+
+- All models must define `$fillable`.
+- All relationships must be explicitly defined.
+
+---
+
+## ⚠️ Warning
+
+When importing any model class, verify the **exact path**.  
+**Never assume** locations or use auto-import blindly.
